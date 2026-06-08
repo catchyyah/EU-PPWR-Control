@@ -113,14 +113,10 @@ async function collectRegulationsAPI() {
   // 수집 대상 URL들 (사용자 지정)
   const sources = [
     {
-      name: '한국환경공단 - 공지사항',
+      name: '한국환경공단',
       url: 'https://www.keco.or.kr/web/lay1/bbs/S1T10C108/A/18/list.do',
       baseUrl: 'https://www.keco.or.kr',
-    },
-    {
-      name: '한국환경공단 - 보도자료',
-      url: 'https://www.keco.or.kr/web/lay1/bbs/S1T109C110/A/19/list.do',
-      baseUrl: 'https://www.keco.or.kr',
+      viewPattern: 'view.do?article_seq=',
     },
     {
       name: '대한화장품협회',
@@ -128,14 +124,10 @@ async function collectRegulationsAPI() {
       baseUrl: 'https://kcia.or.kr',
     },
     {
-      name: 'KCL - 공지사항',
+      name: 'KCL',
       url: 'https://www.kcl.re.kr/site/program/board/basicboard/list.do?boardtypeid=6&menuid=001016004',
       baseUrl: 'https://www.kcl.re.kr',
-    },
-    {
-      name: 'KCL - 보도자료',
-      url: 'https://www.kcl.re.kr/site/program/board/basicboard/list.do?boardtypeid=168&menuid=001016005',
-      baseUrl: 'https://www.kcl.re.kr',
+      viewPattern: 'view.do?',
     },
   ];
 
@@ -161,7 +153,7 @@ async function collectRegulationsAPI() {
 // ============================================
 // 개별 소스 크롤링 함수
 // ============================================
-async function scrapeSource(source: { name: string; url: string; baseUrl: string }): Promise<any[]> {
+async function scrapeSource(source: any): Promise<any[]> {
   const results: any[] = [];
   const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now();
 
@@ -179,12 +171,11 @@ async function scrapeSource(source: { name: string; url: string; baseUrl: string
     }
 
     const html = await response.text();
+    let count = 0;
 
-    // ===== 패턴 1: 기본 링크 패턴 =====
-    // <a href="...">제목</a>
+    // ===== 패턴: <a> 태그 기반 링크 추출 =====
     const linkPattern = /<a[^>]*href=["']([^"']*?)["'][^>]*>([^<]{5,200}?)<\/a>/gi;
     let match;
-    let count = 0;
 
     while ((match = linkPattern.exec(html)) && count < 10) {
       let href = match[1]?.trim() || '';
@@ -192,38 +183,50 @@ async function scrapeSource(source: { name: string; url: string; baseUrl: string
 
       // 유효성 검사
       if (
+        !title ||
         title.length < 8 ||
         title.length > 300 ||
         !hasEnoughKeywords(title) ||
-        href.includes('javascript') ||
+        href.includes('javascript:') ||
         title.includes('이전') ||
-        title.includes('다음')
+        title.includes('다음') ||
+        title.includes('목록')
       ) {
         continue;
       }
 
-      // URL 정규화 및 검증
+      // URL 생성 - view.do 패턴 우선
       let fullUrl = '';
 
-      if (href.startsWith('http://') || href.startsWith('https://')) {
-        fullUrl = href; // 절대 URL
-      } else if (href.startsWith('/')) {
-        fullUrl = source.baseUrl + href; // 절대 경로
-      } else if (href.startsWith('?')) {
-        fullUrl = source.url + href; // 쿼리 파라미터
-      } else if (href.startsWith('#')) {
-        fullUrl = source.url + href; // 앵커
-      } else if (href.length > 0) {
-        // 상대 경로
-        fullUrl = source.url.endsWith('/')
-          ? source.url + href
-          : source.url + '/' + href;
-      } else {
-        fullUrl = source.url; // 기본값
+      // 1. 이미 절대 URL인 경우
+      if (href.startsWith('http')) {
+        fullUrl = href;
+      }
+      // 2. /path/to/view.do?params 형식 (절대 경로)
+      else if (href.includes('view.do')) {
+        if (href.startsWith('/')) {
+          fullUrl = source.baseUrl + href;
+        } else {
+          fullUrl = source.baseUrl + '/' + href;
+        }
+      }
+      // 3. 상대 경로가 있는 경우
+      else if (href.startsWith('/')) {
+        fullUrl = source.baseUrl + href;
+      }
+      // 4. 쿼리 문자열만 있는 경우 (list.do?article_seq=xxx)
+      else if (href.startsWith('?')) {
+        const baseList = source.url.split('?')[0]; // list.do 부분만
+        fullUrl = baseList + href;
+      }
+      // 5. 상대 경로
+      else if (href && !href.startsWith('#')) {
+        const basePath = source.url.substring(0, source.url.lastIndexOf('/') + 1);
+        fullUrl = basePath + href;
       }
 
-      // URL 유효성 검사 (javascript: 또는 empty href 제외)
-      if (!fullUrl || fullUrl.includes('javascript:') || fullUrl === source.url && !href) {
+      // URL 최종 검증
+      if (!fullUrl || !fullUrl.includes('http') || fullUrl.includes('javascript:')) {
         continue;
       }
 
@@ -233,35 +236,6 @@ async function scrapeSource(source: { name: string; url: string; baseUrl: string
         title: title.substring(0, 150),
         content: title.substring(0, 300),
         url: fullUrl,
-        keywords: extractKeywords(title),
-        publishedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-
-      count++;
-    }
-
-    // ===== 패턴 2: 테이블 셀 패턴 =====
-    // <td>...</td> 또는 <div class="...">제목</div>
-    const cellPattern = /<(?:td|div)[^>]*class="[^"]*(?:title|subject|headline)[^"]*"[^>]*>([^<]{5,200}?)<\/(?:td|div)>/gi;
-
-    while ((match = cellPattern.exec(html)) && count < 10) {
-      const title = match[1]?.replace(/<[^>]*>/g, '').trim() || '';
-
-      if (
-        title.length < 8 ||
-        title.length > 300 ||
-        !hasEnoughKeywords(title)
-      ) {
-        continue;
-      }
-
-      results.push({
-        id: `reg-${generateId()}`,
-        source: source.name,
-        title: title.substring(0, 150),
-        content: title.substring(0, 300),
-        url: source.url,
         keywords: extractKeywords(title),
         publishedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
