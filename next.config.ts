@@ -3,13 +3,6 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   /* Render.com 최적화 */
   reactStrictMode: true,
-  swcMinify: true,
-
-  /* 정적 생성 최적화 */
-  onDemandEntries: {
-    maxInactiveAge: 60 * 1000,
-    pagesBufferLength: 5,
-  },
 
   /* 환경별 설정 */
   env: {
