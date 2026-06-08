@@ -10,43 +10,44 @@ export default function RegulationsPage() {
   const collectRegulations = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/regulations?action=collect');
+      console.log('🔄 규제 정보 수집 요청...');
+      const response = await fetch('/api/regulations?action=collect', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
       const data = await response.json();
 
-      if (data.regulations) {
+      console.log('✅ 수집 응답:', data);
+
+      if (data.regulations && data.regulations.length > 0) {
         setRegulations(data.regulations);
         setLastUpdate(new Date().toLocaleString('ko-KR'));
+        localStorage.setItem('regulations', JSON.stringify(data.regulations));
+        alert(`✅ 수집 완료! ${data.count}개의 규제 정보를 가져왔습니다.`);
+      } else {
+        alert('⚠️ 수집할 규제 정보가 없습니다. API 키와 네트워크 연결을 확인해주세요.');
       }
     } catch (error) {
       console.error('규제 정보 수집 실패:', error);
+      alert('❌ 규제 정보 수집 중 오류가 발생했습니다.');
     } finally {
       setLoading(false);
     }
   };
 
-  // 페이지 로드 시 저장된 데이터 복원 및 서버에서 로드
+  // 페이지 로드 시 저장된 데이터 복원
   useEffect(() => {
-    // 로컬 스토리지에서 먼저 로드
+    // 로컬 스토리지에서 저장된 데이터 로드
     const saved = localStorage.getItem('regulations');
     if (saved) {
-      setRegulations(JSON.parse(saved));
-    }
-
-    // 서버에서 최신 데이터 로드
-    const loadFromServer = async () => {
       try {
-        const response = await fetch('/api/regulations');
-        const data = await response.json();
-        if (data.regulations && data.regulations.length > 0) {
-          setRegulations(data.regulations);
-          setLastUpdate(new Date().toLocaleString('ko-KR'));
-        }
-      } catch (error) {
-        console.error('서버에서 규제 정보 로드 실패:', error);
+        const parsed = JSON.parse(saved);
+        setRegulations(parsed);
+        setLastUpdate('(저장된 데이터)');
+      } catch (e) {
+        console.error('저장된 데이터 파싱 실패:', e);
       }
-    };
-
-    loadFromServer();
+    }
   }, []);
 
   // 규제 정보 저장

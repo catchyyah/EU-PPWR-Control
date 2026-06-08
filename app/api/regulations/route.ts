@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// 메모리 기반 저장소
-let regulationsCache: any[] = [];
-
+// 응답 함수 (서버리스 환경에서 작동)
 export async function GET(request: NextRequest) {
   try {
     const action = request.nextUrl.searchParams.get('action');
@@ -10,7 +8,6 @@ export async function GET(request: NextRequest) {
     if (action === 'collect') {
       console.log('📥 규제 정보 수집 시작...');
       const regulations = await collectRegulationsAPI();
-      regulationsCache = regulations;
 
       return NextResponse.json({
         status: 'success',
@@ -21,12 +18,13 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 기본 조회 (메모리에 저장된 데이터 반환)
+    // 기본 조회 (로컬 스토리지 또는 초기 데이터 반환)
     return NextResponse.json({
       status: 'success',
       message: 'PPWR 규제 정보',
-      regulations: regulationsCache,
-      count: regulationsCache.length,
+      regulations: [],
+      count: 0,
+      note: '지금 수집 버튼을 눌러 최신 데이터를 가져오세요.',
     });
   } catch (error) {
     console.error('규제 정보 API 오류:', error);
@@ -48,7 +46,6 @@ export async function POST(request: NextRequest) {
     if (body.action === 'collect') {
       console.log('📥 규제 정보 수집 시작...');
       const regulations = await collectRegulationsAPI();
-      regulationsCache = regulations;
 
       return NextResponse.json({
         status: 'success',
