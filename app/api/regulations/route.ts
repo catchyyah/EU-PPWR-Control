@@ -202,16 +202,29 @@ async function scrapeSource(source: { name: string; url: string; baseUrl: string
         continue;
       }
 
-      // URL 정규화
+      // URL 정규화 및 검증
       let fullUrl = '';
-      if (href.startsWith('http')) {
-        fullUrl = href;
+
+      if (href.startsWith('http://') || href.startsWith('https://')) {
+        fullUrl = href; // 절대 URL
       } else if (href.startsWith('/')) {
-        fullUrl = source.baseUrl + href;
+        fullUrl = source.baseUrl + href; // 절대 경로
+      } else if (href.startsWith('?')) {
+        fullUrl = source.url + href; // 쿼리 파라미터
+      } else if (href.startsWith('#')) {
+        fullUrl = source.url + href; // 앵커
       } else if (href.length > 0) {
-        fullUrl = source.baseUrl + '/' + href;
+        // 상대 경로
+        fullUrl = source.url.endsWith('/')
+          ? source.url + href
+          : source.url + '/' + href;
       } else {
-        fullUrl = source.url;
+        fullUrl = source.url; // 기본값
+      }
+
+      // URL 유효성 검사 (javascript: 또는 empty href 제외)
+      if (!fullUrl || fullUrl.includes('javascript:') || fullUrl === source.url && !href) {
+        continue;
       }
 
       results.push({

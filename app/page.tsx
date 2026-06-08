@@ -22,20 +22,18 @@ export default function Dashboard() {
     },
   };
 
-  const collectRegulations = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch('/api/regulations?action=collect');
-      const data = await response.json();
-      if (data.regulations) {
-        setRegulations(data.regulations.slice(0, 5));
+  // 페이지 로드 시 저장된 규제 정보 로드
+  useEffect(() => {
+    const saved = localStorage.getItem('regulations');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setRegulations(parsed.slice(0, 3)); // 최신 3개만
+      } catch (e) {
+        console.error('저장된 데이터 파싱 실패:', e);
       }
-    } catch (error) {
-      console.error('규제 정보 수집 실패:', error);
-    } finally {
-      setLoading(false);
     }
-  };
+  }, []);
 
   return (
     <div className="space-y-8">
@@ -81,30 +79,34 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* 규제 정보 */}
         <div className="lg:col-span-2 bg-white p-6 rounded-lg border border-gray-200">
-          <div className="flex justify-between items-center mb-4">
+          <div className="mb-4">
             <h3 className="text-lg font-bold text-gray-900">최신 규제 정보</h3>
-            <button
-              onClick={collectRegulations}
-              disabled={loading}
-              className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
-            >
-              {loading ? '수집중...' : '수집'}
-            </button>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-3">
             {regulations.length === 0 ? (
               <div className="border-l-4 border-blue-500 pl-4 py-2">
                 <p className="text-sm text-gray-600">
-                  아직 수집된 규제 정보가 없습니다.
+                  수집된 규제 정보가 없습니다.
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
-                  '수집' 버튼을 눌러 규제 정보를 수집하세요.
+                  규제 정보 탭에서 '지금 수집'을 눌러주세요.
                 </p>
               </div>
             ) : (
               regulations.map((reg, idx) => (
                 <div key={idx} className="border-l-4 border-blue-500 pl-4 py-2">
-                  <p className="text-sm font-medium text-gray-900">{reg.title}</p>
+                  {reg.url ? (
+                    <a
+                      href={reg.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      {reg.title}
+                    </a>
+                  ) : (
+                    <p className="text-sm font-medium text-gray-900">{reg.title}</p>
+                  )}
                   <p className="text-xs text-gray-500 mt-1">{reg.source}</p>
                 </div>
               ))

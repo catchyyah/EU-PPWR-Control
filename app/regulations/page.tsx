@@ -137,47 +137,35 @@ export default function RegulationsPage() {
 }
 
 function RegulationCard({ regulation }: { regulation: any }) {
-  const sourceIcons = {
-    EU_LEX: '🇪🇺',
-    NEWS: '📰',
-    KOREAN_AGENCY: '🇰🇷',
-  };
-
-  const sourceLabels = {
-    EU_LEX: 'EU 공식 문서',
-    NEWS: '뉴스',
-    KOREAN_AGENCY: '한국 기관',
-  };
-
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow">
-      <div className="flex justify-between items-start gap-4 mb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">
-            {sourceIcons[regulation.source as keyof typeof sourceIcons]}
-          </span>
-          <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded font-medium">
-            {sourceLabels[regulation.source as keyof typeof sourceLabels]}
-          </span>
-        </div>
-        {regulation.url && (
-          <a
-            href={regulation.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 hover:underline text-sm"
-            title="외부 링크"
-          >
-            🔗
-          </a>
-        )}
+      {/* 소스 정보 */}
+      <div className="mb-3">
+        <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded font-medium">
+          {regulation.source}
+        </span>
       </div>
 
-      <h3 className="text-lg font-bold text-gray-900 mb-2">{regulation.title}</h3>
-      <p className="text-gray-700 text-sm mb-3 line-clamp-3">
+      {/* 제목 (클릭 가능) */}
+      {regulation.url ? (
+        <a
+          href={regulation.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block text-lg font-bold text-blue-600 hover:text-blue-800 hover:underline mb-2 cursor-pointer"
+        >
+          {regulation.title}
+        </a>
+      ) : (
+        <h3 className="text-lg font-bold text-gray-900 mb-2">{regulation.title}</h3>
+      )}
+
+      {/* 내용 */}
+      <p className="text-gray-700 text-sm mb-3 line-clamp-2">
         {regulation.content}
       </p>
 
+      {/* 키워드 */}
       {regulation.keywords && regulation.keywords.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-3">
           {regulation.keywords.map((keyword: string, idx: number) => (
@@ -191,6 +179,7 @@ function RegulationCard({ regulation }: { regulation: any }) {
         </div>
       )}
 
+      {/* 날짜 */}
       <div className="text-xs text-gray-500">
         {regulation.publishedAt && (
           <>
