@@ -179,7 +179,11 @@ async function scrapeSource(source: any): Promise<any[]> {
 
     while ((match = linkPattern.exec(html)) && count < 10) {
       let href = match[1]?.trim() || '';
-      const title = match[2]?.replace(/<[^>]*>/g, '').trim() || '';
+      // 제목에서 HTML 태그, 따옴표, 공백 제거
+      const title = match[2]
+        ?.replace(/<[^>]*>/g, '') // HTML 태그 제거
+        .replace(/^["'\s]+|["'\s]+$/g, '') // 앞뒤 따옴표와 공백 제거
+        .trim() || '';
 
       // 유효성 검사
       if (
@@ -202,24 +206,26 @@ async function scrapeSource(source: any): Promise<any[]> {
       if (href.startsWith('http')) {
         fullUrl = href;
       }
-      // 2. /path/to/view.do?params 형식 (절대 경로)
-      else if (href.includes('view.do')) {
-        if (href.startsWith('/')) {
-          fullUrl = source.baseUrl + href;
-        } else {
-          fullUrl = source.baseUrl + '/' + href;
-        }
-      }
-      // 3. 상대 경로가 있는 경우
+      // 2. 절대 경로 (/path/to/view.do?params)
       else if (href.startsWith('/')) {
         fullUrl = source.baseUrl + href;
       }
-      // 4. 쿼리 문자열만 있는 경우 (list.do?article_seq=xxx)
+      // 3. 상대 경로 (./view.do?params)
+      else if (href.startsWith('./')) {
+        const basePath = source.url.substring(0, source.url.lastIndexOf('/') + 1);
+        fullUrl = basePath + href.substring(2); // ./ 제거
+      }
+      // 4. 상대 경로 (view.do?params)
+      else if (href.includes('view.do')) {
+        const basePath = source.url.substring(0, source.url.lastIndexOf('/') + 1);
+        fullUrl = basePath + href;
+      }
+      // 5. 쿼리 문자열만 있는 경우 (list.do?article_seq=xxx)
       else if (href.startsWith('?')) {
         const baseList = source.url.split('?')[0]; // list.do 부분만
         fullUrl = baseList + href;
       }
-      // 5. 상대 경로
+      // 6. 기타 상대 경로
       else if (href && !href.startsWith('#')) {
         const basePath = source.url.substring(0, source.url.lastIndexOf('/') + 1);
         fullUrl = basePath + href;
