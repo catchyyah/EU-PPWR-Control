@@ -109,31 +109,121 @@ async function collectRegulationsAPI() {
   return regulations;
 }
 
-// 네이버 뉴스 수집 (Google News Search 패턴 기반)
+// 네이버 뉴스 검색 크롤링
 async function scrapeNaverNews() {
   const results: any[] = [];
   const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now();
 
-  // 네이버 뉴스 검색 (공개 API 없으므로 기본 정보만 제공)
-  const keywords = ['PPWR', '패키징', '규제'];
+  // 검색 키워드 (2개 이상 조합 찾음)
+  const searchKeywords = ['EU', '패키징', 'PPWR', 'ESPR', '규제'];
+  const newsUrls = new Set<string>();
 
-  // 테스트용: 실제로는 다양한 소스에서 가져옴
-  // 나중에 더 정교한 뉴스 크롤링 API로 대체 예정
-  console.log('   📰 한국 뉴스 수집 (기능 개선 예정)');
+  console.log('   📰 네이버 뉴스 검색 크롤링');
 
-  // 임시로 더미 데이터 추가 (기능 테스트용)
-  // 실제 운영 시에는 이 부분을 제거하고 실제 뉴스 API 연동
-  if (process.env.NODE_ENV === 'development') {
-    results.push({
-      id: `news-${generateId()}`,
-      source: 'NEWS',
-      title: '[임시] EU PPWR 규제 동향 - 한국 기업 대응 방안',
-      content: '유럽연합의 PPWR(Packaging and Packaging Waste Regulation) 규제가 2025년 시행 예정으로, 국내 화장품 포장재 제조 기업들의 대응이 시급합니다.',
-      url: 'https://news.naver.com',
-      keywords: extractKeywords('EU PPWR 패키징 규제'),
-      publishedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
+  try {
+    // 각 키워드로 네이버 뉴스 검색
+    for (const keyword of searchKeywords) {
+      try {
+        const searchUrl = `https://news.naver.com/search/news.naver?query=${encodeURIComponent(keyword)}&sort=date&page=1`;
+
+        const response = await fetch(searchUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          },
+        });
+
+        if (!response.ok) continue;
+
+        const html = await response.text();
+
+        // 뉴스 항목 패턴 (여러 구조 대응)
+        // <a href="url" class="news_tit" ...>제목</a>
+        // <a href="url" data-url="..." ...>제목</a>
+        const newsPattern = /<a[^>]*href=["']([^"']*news[^"']*?)["'][^>]*(?:class="[^"]*(?:news_tit|title)[^"]*")?[^>]*>([^<]{5,150}?)<\/a>/gi;
+
+        let match;
+        while ((match = newsPattern.exec(html))) {
+          let url = match[1].trim();
+          const title = match[2].replace(/<[^>]*>/g, '').trim();
+
+          // URL 정규화
+          if (!url.startsWith('http')) {
+            if (url.startsWith('/')) {
+              url = 'https://news.naver.com' + url;
+            } else {
+              url = 'https://news.naver.com/' + url;
+            }
+          }
+
+          // 제목에 2개 이상 키워드 포함 검사
+          if (title.length > 10 && hasEnoughKeywords(title)) {
+            newsUrls.add(url); // URL 중복 제거
+          }
+        }
+      } catch (error) {
+        console.log(`      └─ 키워드 "${keyword}" 검색 오류`);
+      }
+    }
+
+    // 수집된 URL을 데이터로 변환
+    for (const url of newsUrls) {
+      try {
+        // 각 뉴스 페이지에서 상세 정보 추출 (선택사항)
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          },
+        });
+
+        if (response.ok) {
+          const html = await response.text();
+
+          // 제목 추출
+          const titleMatch = html.match(/<h1[^>]*class="[^"]*headline[^"]*"[^>]*>([^<]+)<\/h1>/);
+          const title = titleMatch ? titleMatch[1].trim() : url.split('/').pop() || '뉴스';
+
+          // 본문 추출 (첫 200자)
+          const contentMatch = html.match(/<article[^>]*id="dic_area"[^>]*>(.*?)<\/article>/s);
+          let content = title;
+
+          if (contentMatch) {
+            const contentText = contentMatch[1]
+              .replace(/<[^>]*>/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim()
+              .substring(0, 300);
+            content = contentText;
+          }
+
+          results.push({
+            id: `news-${generateId()}`,
+            source: 'NEWS',
+            title: title.substring(0, 150),
+            content: content,
+            url: url,
+            keywords: extractKeywords(title),
+            publishedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      } catch (error) {
+        // 개별 페이지 로드 실패는 무시하고 URL만 저장
+        results.push({
+          id: `news-${generateId()}`,
+          source: 'NEWS',
+          title: '네이버 뉴스',
+          content: url,
+          url: url,
+          keywords: ['뉴스'],
+          publishedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    console.log(`      └─ ${results.length}개 발견`);
+  } catch (error) {
+    console.error('네이버 뉴스 수집 실패:', error);
   }
 
   return results;
