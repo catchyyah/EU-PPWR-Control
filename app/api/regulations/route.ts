@@ -1,42 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import path from 'path';
 
-// 수집된 규제 정보 임시 저장소
+// 메모리 기반 저장소
 let regulationsCache: any[] = [];
 
 export async function GET(request: NextRequest) {
   try {
     const action = request.nextUrl.searchParams.get('action');
 
-    // 기존 데이터 로드
-    try {
-      const dataPath = path.join(process.cwd(), 'public', 'regulations-data.json');
-      const data = await fs.readFile(dataPath, 'utf-8');
-      regulationsCache = JSON.parse(data);
-    } catch (e) {
-      // 파일이 없으면 빈 배열
-      regulationsCache = [];
-    }
-
     if (action === 'collect') {
-      // 수동으로 규제 정보 수집 실행
-      console.log('📥 규제 정보 수집 API 호출');
+      console.log('📥 규제 정보 수집 시작...');
       const regulations = await collectRegulationsAPI();
-
-      // 파일에 저장
-      const dataPath = path.join(process.cwd(), 'public', 'regulations-data.json');
-      await fs.writeFile(dataPath, JSON.stringify(regulations, null, 2));
+      regulationsCache = regulations;
 
       return NextResponse.json({
         status: 'success',
         message: '규제 정보 수집 완료',
         count: regulations.length,
-        regulations: regulations.slice(0, 10), // 최근 10개만 반환
+        regulations: regulations,
+        timestamp: new Date().toISOString(),
       });
     }
 
-    // 기본 조회 (저장된 데이터 반환)
+    // 기본 조회 (메모리에 저장된 데이터 반환)
     return NextResponse.json({
       status: 'success',
       message: 'PPWR 규제 정보',
@@ -63,16 +48,13 @@ export async function POST(request: NextRequest) {
     if (body.action === 'collect') {
       console.log('📥 규제 정보 수집 시작...');
       const regulations = await collectRegulationsAPI();
-
-      // 파일에 저장
-      const dataPath = path.join(process.cwd(), 'public', 'regulations-data.json');
-      await fs.writeFile(dataPath, JSON.stringify(regulations, null, 2));
+      regulationsCache = regulations;
 
       return NextResponse.json({
         status: 'success',
         message: '규제 정보 수집 완료',
         count: regulations.length,
-        regulations: regulations.slice(0, 10),
+        regulations: regulations,
         timestamp: new Date().toISOString(),
       });
     }
@@ -94,48 +76,63 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// 규제 정보 수집 (NewsAPI + 한국 기관)
+// 규제 정보 수집 (NewsAPI)
 async function collectRegulationsAPI() {
-  const { randomUUID } = await import('crypto');
-  const axios = require('axios');
-
   const regulations: any[] = [];
   const newsApiKey = process.env.NEWS_API_KEY;
 
+  // UUID 생성 함수
+  const generateId = () => Math.random().toString(36).substring(2, 15);
+
   // 1. NewsAPI 수집
-  if (newsApiKey) {
-    try {
-      console.log('📰 언론사 뉴스 수집 중...');
-      const keywords = ['EU PPWR packaging', 'packaging regulation', 'sustainable packaging'];
+  if (!newsApiKey) {
+    console.warn('⚠️ NEWS_API_KEY가 설정되지 않았습니다.');
+    return regulations;
+  }
 
-      for (const keyword of keywords) {
-        const response = await axios.get('https://newsapi.org/v2/everything', {
-          params: {
-            q: keyword,
-            language: 'en',
-            sortBy: 'publishedAt',
-            pageSize: 3,
-            apiKey: newsApiKey,
-          },
-        });
+  try {
+    console.log('📰 언론사 뉴스 수집 중...');
+    const keywords = [
+      'EU PPWR packaging',
+      'EU packaging regulation',
+      'PPWR packaging waste',
+    ];
 
-        for (const article of response.data.articles || []) {
-          regulations.push({
-            id: `news-${randomUUID()}`,
-            source: 'NEWS',
-            title: article.title,
-            content: article.description || article.content || '',
-            url: article.url,
-            keywords: ['EU', '패키징', 'PPWR'],
-            publishedAt: article.publishedAt,
-            updatedAt: new Date().toISOString(),
-          });
+    for (const keyword of keywords) {
+      try {
+        const url = new URL('https://newsapi.org/v2/everything');
+        url.searchParams.append('q', keyword);
+        url.searchParams.append('language', 'en');
+        url.searchParams.append('sortBy', 'publishedAt');
+        url.searchParams.append('pageSize', '5');
+        url.searchParams.append('apiKey', newsApiKey);
+
+        const response = await fetch(url.toString());
+        const data = await response.json();
+
+        if (data.articles) {
+          console.log(`   검색어 "${keyword}": ${data.articles.length}개 발견`);
+          for (const article of data.articles) {
+            regulations.push({
+              id: `news-${generateId()}-${Date.now()}`,
+              source: 'NEWS',
+              title: article.title,
+              content: article.description || article.content || '',
+              url: article.url,
+              keywords: ['EU', '패키징', 'PPWR'],
+              publishedAt: article.publishedAt,
+              updatedAt: new Date().toISOString(),
+            });
+          }
         }
+      } catch (error) {
+        console.error(`   검색어 "${keyword}" 오류:`, error instanceof Error ? error.message : error);
       }
-      console.log(`✓ ${regulations.length}개 뉴스 수집 완료`);
-    } catch (error) {
-      console.error('뉴스 API 오류:', error);
     }
+
+    console.log(`✓ 총 ${regulations.length}개 뉴스 수집 완료`);
+  } catch (error) {
+    console.error('뉴스 API 오류:', error instanceof Error ? error.message : error);
   }
 
   return regulations;
