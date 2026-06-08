@@ -171,33 +171,56 @@ async function scrapeSource(source: any): Promise<any[]> {
     }
 
     const html = await response.text();
+    console.log(`   📄 HTML 크기: ${html.length} bytes`);
     let count = 0;
 
     // ===== 패턴: <a> 태그 기반 링크 추출 =====
     const linkPattern = /<a[^>]*href=["']([^"']*?)["'][^>]*>([^<]{5,200}?)<\/a>/gi;
     let match;
+    let matchCount = 0;
 
-    while ((match = linkPattern.exec(html)) && count < 10) {
+    while ((match = linkPattern.exec(html))) {
+      matchCount++;
       let href = match[1]?.trim() || '';
-      // 제목에서 HTML 태그, 따옴표, 공백 제거
-      const title = match[2]
-        ?.replace(/<[^>]*>/g, '') // HTML 태그 제거
+      // 제목에서 HTML 태그, 따옴표, 공백 정제
+      const rawTitle = match[2] || '';
+      const title = rawTitle
+        .replace(/<[^>]*>/g, '') // HTML 태그 제거
+        .replace(/\s+/g, ' ') // 연속된 공백을 하나로
         .replace(/^["'\s]+|["'\s]+$/g, '') // 앞뒤 따옴표와 공백 제거
-        .trim() || '';
+        .trim();
+
+      // 디버깅: 모든 매칭 표시
+      if (matchCount <= 5) {
+        console.log(`     매칭 #${matchCount}: "${title.substring(0, 50)}..."`);
+      }
 
       // 유효성 검사
       if (
         !title ||
         title.length < 8 ||
-        title.length > 300 ||
-        !hasEnoughKeywords(title) ||
+        title.length > 300
+      ) {
+        if (matchCount <= 5) console.log(`       → 길이 부족 (${title.length})`);
+        continue;
+      }
+
+      if (!hasEnoughKeywords(title)) {
+        if (matchCount <= 5) console.log(`       → 키워드 부족`);
+        continue;
+      }
+
+      if (
         href.includes('javascript:') ||
         title.includes('이전') ||
         title.includes('다음') ||
         title.includes('목록')
       ) {
+        if (matchCount <= 5) console.log(`       → 필터 제외`);
         continue;
       }
+
+      if (count >= 10) break;
 
       // URL 생성 - view.do 패턴 우선
       let fullUrl = '';
