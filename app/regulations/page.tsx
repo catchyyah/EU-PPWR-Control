@@ -24,12 +24,29 @@ export default function RegulationsPage() {
     }
   };
 
-  // 페이지 로드 시 저장된 데이터 복원
+  // 페이지 로드 시 저장된 데이터 복원 및 서버에서 로드
   useEffect(() => {
+    // 로컬 스토리지에서 먼저 로드
     const saved = localStorage.getItem('regulations');
     if (saved) {
       setRegulations(JSON.parse(saved));
     }
+
+    // 서버에서 최신 데이터 로드
+    const loadFromServer = async () => {
+      try {
+        const response = await fetch('/api/regulations');
+        const data = await response.json();
+        if (data.regulations && data.regulations.length > 0) {
+          setRegulations(data.regulations);
+          setLastUpdate(new Date().toLocaleString('ko-KR'));
+        }
+      } catch (error) {
+        console.error('서버에서 규제 정보 로드 실패:', error);
+      }
+    };
+
+    loadFromServer();
   }, []);
 
   // 규제 정보 저장
