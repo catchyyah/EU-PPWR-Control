@@ -50,3 +50,18 @@ export const productInfos = sqliteTable('product_infos', {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().defaultNow(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().defaultNow(),
 });
+
+// 조항별 분석 테이블 (시계열 데이터)
+export const articlesAnalysis = sqliteTable('articles_analysis', {
+  id: text('id').primaryKey(),
+  articleId: text('article_id').notNull().references(() => ppwrArticles.id),
+  analysisType: text('analysis_type').notNull(), // 'interpretation' | 'risk' | 'opportunity' | 'implementation'
+  title: text('title').notNull(),
+  content: text('content').notNull(),
+  status: text('status').notNull().default('draft'), // 'draft' | 'published'
+  author: text('author'),
+  sourceUrl: text('source_url'),
+  tags: text('tags').notNull().default('[]'), // JSON 배열
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().defaultNow(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().defaultNow(),
+});
