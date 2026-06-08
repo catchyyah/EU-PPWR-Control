@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
 
     if (body.action === 'collect') {
       console.log('📥 규제 정보 수집 시작...');
+      const skipEULex = body.skipEULex !== false; // 기본값: true (EU Lex 제외)
       const regulations = await runCollectionNow();
 
       return NextResponse.json({

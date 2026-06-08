@@ -38,43 +38,59 @@ export function startScheduler() {
 /**
  * 규제 정보 수집 및 저장
  */
-export async function collectRegulations() {
+export async function collectRegulations(skipEULex = false) {
   try {
     // 데이터베이스 초기화
     await initializeDatabase();
 
     console.log('📊 규제 정보 수집 시작...');
+    console.log('=' .repeat(50));
 
     const allRegulations: Regulation[] = [];
 
-    // 1. EU Lex 수집
-    console.log('1️⃣ EU Lex 수집...');
-    const euLexData = await scrapeEULex();
-    allRegulations.push(...euLexData);
+    // 1. EU Lex 수집 (옵션)
+    if (!skipEULex) {
+      console.log('1️⃣ EU Lex 수집...');
+      const euLexData = await scrapeEULex();
+      allRegulations.push(...euLexData);
+      console.log(`   └─ ${euLexData.length}개 수집\n`);
+    } else {
+      console.log('⏭️  EU Lex는 건너뜀 (사용자 업로드 예정)\n');
+    }
 
     // 2. 뉴스 API 수집
-    console.log('2️⃣ 뉴스 API 수집...');
+    console.log('2️⃣ 언론사 뉴스 수집 (NewsAPI)...');
     const newsData = await scrapeNewsAPI();
     allRegulations.push(...newsData);
+    console.log(`   └─ ${newsData.length}개 수집\n`);
 
     // 3. 한국 기관 수집
-    console.log('3️⃣ 한국 기관 수집...');
+    console.log('3️⃣ 주요 기관 웹 크롤링...');
     const koreanData = await scrapeKoreanAgencies();
     allRegulations.push(...koreanData);
+    console.log(`   └─ ${koreanData.length}개 수집\n`);
 
     // 4. 중복 제거 및 저장
     const uniqueRegulations = Array.from(
       new Map(allRegulations.map((r) => [r.url, r])).values()
     );
 
-    console.log(
-      `✓ 총 ${uniqueRegulations.length}개 규제 정보 수집 완료`
-    );
+    console.log('=' .repeat(50));
+    console.log(`✓ 최종: 총 ${uniqueRegulations.length}개 규제 정보 수집 완료`);
 
-    // 데이터베이스에 저장 (실제 구현은 수정 필요)
-    // await saveRegulations(uniqueRegulations);
+    // 수집 결과 상세 출력
+    const bySource = {
+      EU_LEX: uniqueRegulations.filter(r => r.source === 'EU_LEX').length,
+      NEWS: uniqueRegulations.filter(r => r.source === 'NEWS').length,
+      KOREAN_AGENCY: uniqueRegulations.filter(r => r.source === 'KOREAN_AGENCY').length,
+    };
 
-    console.log('✓ 규제 정보 수집 및 저장 완료');
+    console.log('\n📊 소스별 집계:');
+    console.log(`   • EU Lex: ${bySource.EU_LEX}개`);
+    console.log(`   • 언론사: ${bySource.NEWS}개`);
+    console.log(`   • 한국 기관: ${bySource.KOREAN_AGENCY}개`);
+
+    console.log('\n✓ 규제 정보 수집 및 저장 완료');
     return uniqueRegulations;
   } catch (error) {
     console.error('❌ 규제 정보 수집 중 오류 발생:', error);
