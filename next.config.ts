@@ -4,6 +4,11 @@ const nextConfig: NextConfig = {
   /* Render.com 최적화 */
   reactStrictMode: true,
 
+  /* Turbopack 호환성 */
+  experimental: {
+    optimizePackageImports: ["lucide-react"],
+  },
+
   /* 환경별 설정 */
   env: {
     NEXT_PUBLIC_API_URL: process.env.VERCEL_URL
