@@ -114,114 +114,97 @@ async function scrapeNaverNews() {
   const results: any[] = [];
   const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now();
 
-  // 검색 키워드 (2개 이상 조합 찾음)
   const searchKeywords = ['EU', '패키징', 'PPWR', 'ESPR', '규제'];
   const newsUrls = new Set<string>();
 
-  console.log('   📰 네이버 뉴스 검색 크롤링');
+  console.log('   📰 네이버 뉴스 검색 크롤링 시작');
 
   try {
-    // 각 키워드로 네이버 뉴스 검색
     for (const keyword of searchKeywords) {
       try {
         const searchUrl = `https://news.naver.com/search/news.naver?query=${encodeURIComponent(keyword)}&sort=date&page=1`;
+        console.log(`      검색: "${keyword}"`);
 
         const response = await fetch(searchUrl, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'text/html,application/xhtml+xml',
           },
         });
 
-        if (!response.ok) continue;
+        if (!response.ok) {
+          console.log(`        └─ HTTP ${response.status}`);
+          continue;
+        }
 
         const html = await response.text();
+        console.log(`        └─ HTML 크기: ${html.length}bytes`);
 
-        // 뉴스 항목 패턴 (여러 구조 대응)
-        // <a href="url" class="news_tit" ...>제목</a>
-        // <a href="url" data-url="..." ...>제목</a>
-        const newsPattern = /<a[^>]*href=["']([^"']*news[^"']*?)["'][^>]*(?:class="[^"]*(?:news_tit|title)[^"]*")?[^>]*>([^<]{5,150}?)<\/a>/gi;
+        // 다양한 HTML 패턴 시도
+        let foundInThisKeyword = 0;
 
+        // 패턴 1: <a href="/article/..." class="news_tit">제목</a>
+        const pattern1 = /<a[^>]*href="(\/article\/[^"]*)"[^>]*class="[^"]*(?:news_tit|_sp_each_title)[^"]*"[^>]*>([^<]{5,150}?)<\/a>/gi;
         let match;
-        while ((match = newsPattern.exec(html))) {
-          let url = match[1].trim();
+        while ((match = pattern1.exec(html))) {
+          const url = 'https://news.naver.com' + match[1].trim();
           const title = match[2].replace(/<[^>]*>/g, '').trim();
 
-          // URL 정규화
-          if (!url.startsWith('http')) {
-            if (url.startsWith('/')) {
-              url = 'https://news.naver.com' + url;
-            } else {
-              url = 'https://news.naver.com/' + url;
-            }
-          }
-
-          // 제목에 2개 이상 키워드 포함 검사
           if (title.length > 10 && hasEnoughKeywords(title)) {
-            newsUrls.add(url); // URL 중복 제거
+            newsUrls.add(url);
+            foundInThisKeyword++;
           }
         }
+
+        // 패턴 2: <a href="https://..." class="...">제목</a> (외부 매체)
+        const pattern2 = /<a[^>]*href="(https?:\/\/[^"]*)"[^>]*(?:class="[^"]*(?:news|link|title)[^"]*")?[^>]*>([^<]{5,150}?)<\/a>/gi;
+        while ((match = pattern2.exec(html))) {
+          const url = match[1].trim();
+          const title = match[2].replace(/<[^>]*>/g, '').trim();
+
+          if (
+            title.length > 10 &&
+            hasEnoughKeywords(title) &&
+            (url.includes('news') || url.includes('article') || url.includes('post'))
+          ) {
+            newsUrls.add(url);
+            foundInThisKeyword++;
+          }
+        }
+
+        console.log(`        └─ ${foundInThisKeyword}개 발견`);
       } catch (error) {
-        console.log(`      └─ 키워드 "${keyword}" 검색 오류`);
+        console.log(`        └─ 오류: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
-    // 수집된 URL을 데이터로 변환
-    for (const url of newsUrls) {
+    console.log(`      총 중복제거 후: ${newsUrls.size}개`);
+
+    // 수집된 URL들을 결과로 변환 (상세 페이지 로드 제외 - 속도 향상)
+    for (const url of Array.from(newsUrls).slice(0, 10)) {
+      // 최대 10개만 처리
       try {
-        // 각 뉴스 페이지에서 상세 정보 추출 (선택사항)
-        const response = await fetch(url, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          },
-        });
+        // 제목을 URL에서 추출하거나 기본값 사용
+        const title = url.includes('article')
+          ? '네이버 뉴스 기사'
+          : url.split('/').pop()?.substring(0, 100) || '뉴스';
 
-        if (response.ok) {
-          const html = await response.text();
-
-          // 제목 추출
-          const titleMatch = html.match(/<h1[^>]*class="[^"]*headline[^"]*"[^>]*>([^<]+)<\/h1>/);
-          const title = titleMatch ? titleMatch[1].trim() : url.split('/').pop() || '뉴스';
-
-          // 본문 추출 (첫 200자)
-          const contentMatch = html.match(/<article[^>]*id="dic_area"[^>]*>(.*?)<\/article>/s);
-          let content = title;
-
-          if (contentMatch) {
-            const contentText = contentMatch[1]
-              .replace(/<[^>]*>/g, ' ')
-              .replace(/\s+/g, ' ')
-              .trim()
-              .substring(0, 300);
-            content = contentText;
-          }
-
-          results.push({
-            id: `news-${generateId()}`,
-            source: 'NEWS',
-            title: title.substring(0, 150),
-            content: content,
-            url: url,
-            keywords: extractKeywords(title),
-            publishedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
-        }
-      } catch (error) {
-        // 개별 페이지 로드 실패는 무시하고 URL만 저장
         results.push({
           id: `news-${generateId()}`,
           source: 'NEWS',
-          title: '네이버 뉴스',
-          content: url,
+          title: title,
+          content: title,
           url: url,
-          keywords: ['뉴스'],
+          keywords: extractKeywords(title),
           publishedAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
+      } catch (error) {
+        console.log(`      └─ 처리 오류: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
-    console.log(`      └─ ${results.length}개 발견`);
+    console.log(`      └─ 최종 수집: ${results.length}개`);
   } catch (error) {
     console.error('네이버 뉴스 수집 실패:', error);
   }
